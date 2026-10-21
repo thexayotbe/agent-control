@@ -5,6 +5,8 @@ import { Sprite, spriteSize, type Pose } from '../sprites/characters'
 import { Chair } from '../sprites/furniture'
 import { WORLD } from '../layout'
 import { Bubble } from './Bubble'
+import { ChatBubble } from './ChatBubble'
+import { useChatBubble } from '../banter/useChat'
 
 const SPEED = 62 // art px per second
 
@@ -111,6 +113,7 @@ export const CharacterLabel = memo(function CharacterLabel(
   { actor, scale, now, reduced }: { actor: Actor; scale: number; now: number; reduced: boolean },
 ) {
   const { mv } = actor
+  const talk = useChatBubble(actor.id)
   const x = useTransform(mv.x, (v) => (v + WORLD.ox) * scale)
   const y = useTransform(mv.y, (v) => (v + WORLD.oy) * scale)
   const z = useTransform(mv.y, (v) => 1000 + Math.round(v))
@@ -122,7 +125,9 @@ export const CharacterLabel = memo(function CharacterLabel(
     <motion.div style={{ x, y, zIndex: z, position: 'absolute', left: 0, top: 0, pointerEvents: 'none' }}>
       <div style={{ position: 'absolute', left: 0, top: -headUp * scale - 10, transform: 'translate(-50%, -100%)' }}>
         <AnimatePresence>
-          {actor.bubble && (
+          {talk ? (
+            <ChatBubble key={talk.id} text={talk.text} reduced={reduced} />
+          ) : actor.bubble && (
             <Bubble key={actor.bubble} kind={actor.bubble} task={actor.task} now={now} reduced={reduced} />
           )}
         </AnimatePresence>

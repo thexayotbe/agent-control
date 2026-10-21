@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { OfficeState } from './types'
 import { engine, type Actor } from './engine'
+import { chat } from './banter/engine'
 
 const POLL_MS = 3000
 
@@ -43,11 +44,13 @@ export function useOfficeState() {
       setState(data)
       setNow(Date.now() / 1000 + offset.current)
       engine.sync(data.tasks, data.now)
+      chat.update(data)
     }
+    chat.start()
     void poll()
     const id = window.setInterval(poll, POLL_MS)
     const tick = window.setInterval(() => setNow(Date.now() / 1000 + offset.current), 1000)
-    return () => { alive = false; clearInterval(id); clearInterval(tick) }
+    return () => { alive = false; clearInterval(id); clearInterval(tick); chat.stop() }
   }, [])
 
   useEffect(() => {

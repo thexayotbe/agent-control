@@ -4,10 +4,12 @@ import { Office } from './components/Office'
 import { BottomBar } from './components/BottomBar'
 import { TaskPanel } from './components/TaskPanel'
 import { TaskDetail } from './components/TaskDetail'
+import { ChatPanel, ChatToggle } from './components/ChatPanel'
 
 export default function App() {
   const { state, demo, now, actors } = useOfficeState()
   const [panel, setPanel] = useState(false)
+  const [chatOpen, setChatOpen] = useState(false)
   const [sel, setSel] = useState<string | null>(null)
   const close = useCallback(() => setSel(null), [])
   const selected = sel ? state?.tasks.find((t) => t.id === sel) ?? actors.find((a) => a.id === sel)?.task : undefined
@@ -23,7 +25,8 @@ export default function App() {
             {!state && <div className="border-2 border-ink bg-cream px-[6px] py-[2px] text-[10px]">loading…</div>}
           </div>
           <div onClick={(e) => e.stopPropagation()}>
-            <TaskPanel open={panel} onToggle={() => setPanel((v) => !v)} tasks={state?.tasks ?? []} now={now} onPick={setSel} />
+            <TaskPanel open={panel} onToggle={() => setPanel((v) => !v)} tasks={state?.tasks ?? []} now={now} onPick={setSel} lead={<ChatToggle open={chatOpen} onToggle={() => setChatOpen((v) => !v)} />} />
+            <ChatPanel open={chatOpen} />
           </div>
           {selected && (
             <div onClick={(e) => e.stopPropagation()}>

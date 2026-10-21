@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { motion } from 'motion/react'
+import { AnimatePresence, motion } from 'motion/react'
 import { BUILDING, MANAGER, WORLD } from '../layout'
 import type { Actor } from '../engine'
 import { CharacterLabel, CharacterSprite } from './Character'
@@ -8,6 +8,8 @@ import { Decor } from './Decor'
 import { ManagerDesk } from './ManagerDesk'
 import * as F from '../sprites/furniture'
 import { useReducedMotion } from '../useOfficeState'
+import { ChatBubble } from './ChatBubble'
+import { useChatBubble } from '../banter/useChat'
 
 function useBox<T extends HTMLElement>() {
   const ref = useRef<T>(null)
@@ -94,6 +96,7 @@ export function Office({ actors, now, managerActive, onSelect }: Props) {
 function ManagerLabel({ active, scale, reduced }: { active: boolean; scale: number; reduced: boolean }) {
   const x = (WORLD.ox + MANAGER.feet.x) * scale
   const y = (WORLD.oy + MANAGER.feet.y) * scale
+  const talk = useChatBubble('manager')
   return (
     <div style={{ position: 'absolute', left: x, top: y, zIndex: 1000 + MANAGER.feet.y, pointerEvents: 'none' }}>
       <div
@@ -101,6 +104,11 @@ function ManagerLabel({ active, scale, reduced }: { active: boolean; scale: numb
         className="whitespace-nowrap bg-ink/85 px-[4px] text-[9px] font-bold leading-[11px] tracking-wider text-[#e8c15a]"
       >
         MANAGER
+      </div>
+      <div style={{ position: 'absolute', left: 0, top: -34 * scale, transform: 'translate(-50%, -100%)' }}>
+        <AnimatePresence>
+          {talk && <ChatBubble key={talk.id} text={talk.text} reduced={reduced} />}
+        </AnimatePresence>
       </div>
       {!active && (
         <div style={{ position: 'absolute', left: 10 * scale, top: -24 * scale, pointerEvents: 'none' }} className="text-[11px] font-bold text-ink">

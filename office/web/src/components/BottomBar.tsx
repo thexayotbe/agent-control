@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import type { AgyAccount, Budget, Meter, OfficeState, PoolBudget } from '../types'
 import { ROOM_LIST, roomFor, type RoomId } from '../layout'
+import { chat } from '../banter/engine'
+import { useChat } from '../banter/useChat'
 
 const pad = (n: number) => String(n).padStart(2, '0')
 const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -72,6 +74,31 @@ function Agy({ a }: { a: AgyAccount }) {
   )
 }
 
+function ChatControls() {
+  const { muted, clean } = useChat()
+  const btn = 'pixel-btn px-[6px] py-[1px] text-[13px] leading-[18px]'
+  return (
+    <div className="ml-auto flex items-center gap-1">
+      <button
+        className={btn}
+        onClick={() => chat.setClean(!clean)}
+        aria-pressed={clean}
+        title={clean ? 'Clean mode: no swearing (click for 🔞)' : 'Rude mode: swearing on (click for 🧼)'}
+      >
+        {clean ? '🧼' : '🔞'}
+      </button>
+      <button
+        className={btn}
+        onClick={() => chat.setMuted(!muted)}
+        aria-pressed={muted}
+        title={muted ? 'Chat muted (click to unmute)' : 'Mute chat bubbles'}
+      >
+        {muted ? '🔇' : '🔊'}
+      </button>
+    </div>
+  )
+}
+
 export function BottomBar({ state, budget }: { state: OfficeState | null; budget: Budget | undefined }) {
   const [clock, setClock] = useState(() => new Date())
   useEffect(() => {
@@ -119,6 +146,7 @@ export function BottomBar({ state, budget }: { state: OfficeState | null; budget
       <div className="flex flex-wrap items-center gap-1">
         {(budget?.agy ?? []).map((a) => <Agy key={a.name} a={a} />)}
       </div>
+      <ChatControls />
     </div>
   )
 }

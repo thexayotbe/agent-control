@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import type { Task } from '../types'
 import { fmtDur, trunc } from './Bubble'
@@ -41,17 +42,19 @@ function Section({ title, items, now, onPick }: { title: string; items: Task[]; 
 }
 
 export function TaskPanel({
-  open, onToggle, tasks, now, onPick,
-}: { open: boolean; onToggle: () => void; tasks: Task[]; now: number; onPick: (id: string) => void }) {
+  open, onToggle, tasks, now, onPick, lead,
+}: { open: boolean; onToggle: () => void; tasks: Task[]; now: number; onPick: (id: string) => void; lead?: ReactNode }) {
   const running = tasks.filter((t) => t.status === 'running')
   const queued = tasks.filter((t) => t.status === 'queued')
   const done = tasks.filter((t) => t.status === 'done').sort((a, b) => (b.finished ?? 0) - (a.finished ?? 0)).slice(0, 15)
   const failed = tasks.filter((t) => t.status === 'failed').sort((a, b) => (b.finished ?? 0) - (a.finished ?? 0)).slice(0, 15)
   return (
     <>
+      <div className="absolute right-3 top-3 z-[1500] flex items-center gap-2">
+      {lead}
       <button
         onClick={onToggle}
-        className="pixel-btn absolute right-3 top-3 z-[1500] flex items-center gap-1 px-2 py-1 text-[12px] font-bold"
+        className="pixel-btn flex items-center gap-1 px-2 py-1 text-[12px] font-bold"
         title="Task board"
         aria-expanded={open}
       >
@@ -60,6 +63,7 @@ export function TaskPanel({
           <span className="ml-1 min-w-[18px] border-2 border-ink bg-terra px-[3px] text-center text-[10px] leading-[14px] text-cream">{running.length}</span>
         )}
       </button>
+      </div>
       <AnimatePresence>
         {open && (
           <motion.aside
