@@ -1,0 +1,23 @@
+{
+  "now": 1792578807,
+  "manager": {"active": true, "last_seen": 1792578800},
+  "tasks": [
+    {"id": "t1", "title": "Fix checkout retry bug", "agent": "agy-sonnet", "account": "agy3", "status": "running", "created": 1792578555, "updated": 1792578700, "finished": null, "result": "", "repo": "web-app", "t3_task": null},
+    {"id": "t2", "title": "Design the database migration plan", "agent": "opus", "account": "main", "status": "running", "created": 1792578300, "updated": 1792578790, "finished": null, "result": "", "repo": "web-app", "t3_task": null},
+    {"id": "t3", "title": "Summarize ARCHITECTURE.md", "agent": "agy-flash", "account": "agy2", "status": "queued", "created": 1792578780, "updated": 1792578780, "finished": null, "result": "", "repo": "docs", "t3_task": null},
+    {"id": "t4", "title": "Review PR #214: auth refactor", "agent": "agy-pro", "account": "main", "status": "running", "created": 1792578480, "updated": 1792578760, "finished": null, "result": "", "repo": "web-app", "t3_task": null},
+    {"id": "t5", "title": "Add tests for the pricing module", "agent": "sonnet", "account": "main", "status": "done", "created": 1792578100, "updated": 1792578782, "finished": 1792578782, "result": "12 tests added, all green", "repo": "web-app", "t3_task": null},
+    {"id": "t6", "title": "Run lint on the API service", "agent": "haiku", "account": "main", "status": "failed", "created": 1792578300, "updated": 1792578737, "finished": 1792578737, "result": "lint failed: 3 errors in gate.go", "repo": "api", "t3_task": null},
+    {"id": "t7", "title": "Research open-source map libraries", "agent": "agy-pro", "account": "agy", "status": "running", "created": 1792578627, "updated": 1792578790, "finished": null, "result": "", "repo": "", "t3_task": null},
+    {"id": "t8", "title": "Rename boilerplate configs", "agent": "haiku", "account": "main", "status": "done", "created": 1792577900, "updated": 1792578207, "finished": 1792578207, "result": "7 files renamed", "repo": "admin", "t3_task": null}
+  ],
+  "budget": {
+    "main":   {"role": "primary", "five_hour": {"pct": 24, "resets": 1792591199}, "seven_day": {"pct": 36, "resets": 1792922399}, "blocked": false, "active": 5},
+    "second": {"role": "reserve", "five_hour": {"pct": 3, "resets": 1792586399}, "seven_day": {"pct": 79, "resets": 1792623599}, "blocked": false, "active": 0},
+    "agy": [
+      {"name": "agy", "gemini": {"week": 12, "five": 5}, "claude": {"week": 71, "five": 20}, "needs_login": false, "enabled": true},
+      {"name": "agy2", "gemini": {"week": 41, "five": 18}, "claude": {"week": 88, "five": 60}, "needs_login": false, "enabled": true},
+      {"name": "agy3", "gemini": {"week": 3, "five": 3}, "claude": {"week": 56, "five": 0}, "needs_login": false, "enabled": true}
+    ]
+  }
+}
