@@ -558,12 +558,40 @@ def board_edit(fn):
 def board_add(agent, title, **kw):
     tid = "t" + datetime.now().strftime("%m%d-%H%M%S") + f"-{os.getpid() % 1000:03d}"
     now = time.time()
+    st = kw.get("status", "running")
     task = {"id": tid, "title": title.strip().splitlines()[0][:120] if title.strip() else "(untitled)",
-            "agent": agent, "account": kw.get("account"), "status": kw.get("status", "running"),
-            "created": now, "updated": now, "finished": None, "result": "", "repo": kw.get("repo"),
-            "t3_task": kw.get("t3")}
+            "agent": agent, "account": kw.get("account"), "status": st,
+            "created": now, "updated": now, "finished": now if st in ("done", "failed") else None,
+            "result": kw.get("result", ""), "repo": kw.get("repo"),
+            "t3_task": kw.get("t3"), "key": kw.get("key")}
     board_edit(lambda b: b.setdefault("tasks", []).append(task))
     return tid
+
+
+class _FindResult(tuple):
+    def __bool__(self):
+        return self[0] is not None
+
+    def __getitem__(self, item):
+        if isinstance(item, str) and self[0] is not None:
+            return self[0][item]
+        return super().__getitem__(item)
+
+    def get(self, k, default=None):
+        if self[0] is not None:
+            return self[0].get(k, default)
+        return default
+
+
+def board_find(key=None, t3=None):
+    """Find a task by key or t3 id. Returns (task_dict, index) or (None, -1)."""
+    tasks = board_load().get("tasks", [])
+    for i, t in enumerate(reversed(tasks)):
+        if key and t.get("key") == key:
+            return _FindResult((t, len(tasks) - 1 - i))
+        if t3 and t.get("t3_task") == t3:
+            return _FindResult((t, len(tasks) - 1 - i))
+    return _FindResult((None, -1))
 
 
 def board_update(tid, **fields):
@@ -577,6 +605,223 @@ def board_update(tid, **fields):
                 return True
         return False
     return board_edit(fn)
+
+
+# ---------------------------------------------------------------- hook-based task tracking
+
+def _agent_from_subagent(tool_input):
+    """Map Claude Code subagent_type / model to an agent name for the board."""
+    model = (tool_input.get("model") or "").lower()
+    for tag in ("opus", "sonnet", "haiku"):
+        if tag in model:
+            return tag
+    st = (tool_input.get("subagent_type") or "").lower()
+    if st == "architect":
+        return "opus"
+    if st in ("scout", "explore"):
+        return "haiku"
+    return "sonnet"
+
+
+def _extract_agent_id(resp, text):
+    """Search tool_response dict/text for an agentId or agent_id value."""
+    if isinstance(resp, dict):
+        aid = resp.get("agentId") or resp.get("agent_id")
+        if aid:
+            return str(aid)
+    if not text:
+        return None
+    for pat in (
+        r'"(?:agentId|agent_id)"\s*:\s*"([^"]+)"',
+        r'(?:agentId|agent_id)\s*[:=]\s*["\']?([a-zA-Z0-9_\-]+)["\']?',
+    ):
+        m = re.search(pat, text, re.I)
+        if m:
+            return m.group(1)
+    return None
+
+
+def _clean_result(val, maxlen=120):
+    """First non-empty line stripped of markdown noise, capped at maxlen."""
+    if not val:
+        return ""
+    if isinstance(val, dict):
+        val = val.get("result") or val.get("output") or val.get("content") or val.get("summary") or json.dumps(val)
+    if isinstance(val, list):
+        texts = []
+        for item in val:
+            if isinstance(item, dict):
+                texts.append(item.get("text") or "")
+            else:
+                texts.append(str(item))
+        val = "\n".join(texts)
+    for line in str(val).splitlines():
+        line = re.sub(r'[*#>`]', '', line).strip()
+        if line:
+            return line[:maxlen]
+    return ""
+
+
+def _is_background(tool_input, resp_text, aid=None):
+    """True if the sub-agent was launched asynchronously."""
+    if tool_input.get("run_in_background"):
+        return True
+    if aid:
+        return True
+    if resp_text and re.search(r'async|launched', resp_text, re.I):
+        return True
+    return False
+
+
+def _t3_map_agent(model):
+    """Map T3 model string to board agent name."""
+    model = (model or "").lower()
+    if "opus" in model:
+        return "opus"
+    if "sonnet" in model:
+        return "sonnet"
+    if "haiku" in model:
+        return "haiku"
+    if "gemini" in model:
+        return "agy-pro" if "high" in model else "agy-flash"
+    return "sonnet"
+
+
+def _t3_parse_response(raw):
+    """Leniently parse T3 delegate_task response (JSON or text)."""
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, list):  # MCP result: [{"type": "text", "text": "{...json...}"}]
+        for item in raw:
+            txt = item.get("text") if isinstance(item, dict) else None
+            try:
+                d = json.loads(txt or "")
+                if isinstance(d, dict) and d.get("taskId"):
+                    return d
+            except ValueError:
+                pass
+    text = str(raw or "")
+    m = re.search(r'\{[^{}]*"taskId"[^{}]*\}', text, re.S)
+    if m:
+        try:
+            return json.loads(m.group(0))
+        except ValueError:
+            pass
+    try:
+        d = json.loads(text)
+        if isinstance(d, dict):
+            return d
+    except ValueError:
+        pass
+    out = {}
+    for key in ("taskId", "status", "model", "summary"):
+        m = re.search(rf'"{key}"\s*:\s*"([^"]*)"', text)
+        if m:
+            out[key] = m.group(1)
+    return out
+
+
+def cmd_track():
+    """Hook handler: reads Claude Code hook JSON from stdin, dispatches on hook_event_name."""
+    try:
+        inp = json.loads(sys.stdin.read() or "{}")
+        event = inp.get("hook_event_name") or ""
+        tool_name = inp.get("tool_name") or ""
+        tool_input = inp.get("tool_input") or {}
+        tool_use_id = inp.get("tool_use_id") or ""
+        tool_response = inp.get("tool_response")
+        resp_text = json.dumps(tool_response) if isinstance(tool_response, (dict, list)) else str(tool_response or "")
+        cwd = inp.get("cwd") or ""
+
+        if event == "PreToolUse" and tool_name in ("Agent", "Task"):
+            _track_pre_agent(tool_input, tool_use_id, cwd)
+        elif event == "PostToolUse" and tool_name in ("Agent", "Task"):
+            _track_post_agent(tool_input, tool_use_id, tool_response, resp_text)
+        elif event == "PostToolUse" and re.match(r'^mcp__t3.code__delegate_task$', tool_name):
+            _track_t3_delegate(tool_input, tool_response, resp_text, cwd)
+        elif event == "SubagentStop":
+            _track_subagent_stop(inp)
+    except Exception:
+        pass
+
+
+def _track_pre_agent(tool_input, tool_use_id, cwd):
+    desc = tool_input.get("description") or tool_input.get("prompt", "")
+    agent = _agent_from_subagent(tool_input)
+    repo = os.path.basename(cwd.rstrip("/\\")) if cwd else None
+    board_add(agent, desc, key=tool_use_id, repo=repo, status="running")
+
+
+def _track_post_agent(tool_input, tool_use_id, tool_response, resp_text):
+    task, _ = board_find(key=tool_use_id)
+    if not task:
+        return
+    aid = _extract_agent_id(tool_response, resp_text)
+    if _is_background(tool_input, resp_text, aid):
+        if aid:
+            board_update(task["id"], agent_id=aid)
+    else:
+        result = _clean_result(tool_response or resp_text)
+        board_update(task["id"], status="done", result=result)
+
+
+def _track_subagent_stop(inp):
+    agent_id = inp.get("agent_id") or (inp.get("tool_input") or {}).get("agent_id")
+    if not agent_id:
+        return
+    for t in reversed(board_load().get("tasks", [])):
+        if t.get("agent_id") == agent_id and t.get("status") == "running":
+            board_update(t["id"], status="done")
+            return
+
+
+def _track_t3_delegate(tool_input, tool_response, resp_text, cwd=""):
+    parsed = _t3_parse_response(tool_response or resp_text)
+    task_id = parsed.get("taskId") or parsed.get("task_id") or ""
+    if not task_id:
+        return
+    existing, _ = board_find(t3=task_id)
+    if existing:
+        return
+    title = tool_input.get("title") or tool_input.get("task") or ""
+    model = parsed.get("model") or (tool_input.get("target") or {}).get("model") or ""
+    provider_id = (tool_input.get("target") or {}).get("providerInstanceId") or tool_input.get("providerInstanceId")
+    agent = _t3_map_agent(model)
+    status_raw = (parsed.get("status") or "").lower()
+    account = provider_id
+    repo = os.path.basename(cwd.rstrip("/\\")) if cwd else None
+    if status_raw in ("completed", "failed", "cancelled", "error"):
+        st = "done" if status_raw == "completed" else "failed"
+        result = _clean_result(parsed.get("summary"))
+        board_add(agent, title, t3=task_id, key=task_id, status=st,
+                  result=result, account=account, repo=repo)
+    else:
+        board_add(agent, title, t3=task_id, key=task_id, status="running",
+                  account=account, repo=repo)
+
+
+def _handle_t3_completion(prompt):
+    """Process T3 task completion notifications embedded in user prompts."""
+    if not prompt or "Delegated task" not in prompt:
+        return
+    pat = re.compile(r'Delegated task (\S+) \((.*?)\) \[(completed|failed|cancelled|error)\]:\s*(.*)')
+    lines = prompt.splitlines()
+    for i, line in enumerate(lines):
+        m = pat.search(line)
+        if m:
+            t3_id, _name, status_word, rest = m.groups()
+            task, _ = board_find(t3=t3_id)
+            if not task:
+                continue
+            res = rest.strip()
+            if not res:
+                for j in range(i + 1, min(i + 10, len(lines))):
+                    if lines[j].strip():
+                        res = lines[j].strip()
+                        break
+            result = _clean_result(res)
+            st = "done" if status_word == "completed" else "failed"
+            board_update(task["id"], status=st, result=result)
 
 
 def cmd_board(args):
@@ -665,12 +910,112 @@ def budget_json():
     return out
 
 
+def _ghost_cleanup(tasks):
+    """Mark tasks still 'running' with updated older than 3 hours as failed."""
+    now = time.time()
+    cutoff = now - 3 * 3600
+    changed = False
+    for t in tasks:
+        if t.get("status") == "running" and (t.get("updated") or t.get("created", now)) < cutoff:
+            t["status"] = "failed"
+            t["result"] = "lost (no finish event)"
+            t["finished"] = now
+            t["updated"] = now
+            changed = True
+    return changed
+
+
+def _session_title(path, cache):
+    """First real user message text from a transcript, cached."""
+    stem = os.path.splitext(os.path.basename(path))[0]
+    if stem in cache and cache[stem]:
+        return cache[stem]
+    title = ""
+    try:
+        with open(path, errors="ignore") as f:
+            for i, line in enumerate(f):
+                if i >= 200:
+                    break
+                if '"type":"user"' not in line.replace(" ", "") and '"type": "user"' not in line:
+                    continue
+                try:
+                    d = json.loads(line)
+                except ValueError:
+                    continue
+                if d.get("type") != "user":
+                    continue
+                content = d.get("message", d).get("content") or d.get("content") or ""
+                if isinstance(content, list):
+                    content = " ".join(c.get("text", "") for c in content if isinstance(c, dict))
+                content = str(content).strip()
+                if content.startswith(("<", "Base directory for this skill", "This session is being continued",
+                                       "Caveat:", "[Request interrupted")) or "tool_result" in content:
+                    continue
+                if content:
+                    title = content[:60]
+                    break
+    except OSError:
+        pass
+    if title:
+        cache[stem] = title
+    return title
+
+
+def _build_sessions():
+    """Build session list from Claude Code transcripts modified in the last 15 min."""
+    title_cache_path = os.path.join(STATE, "session-titles.json")
+    title_cache = read_json(title_cache_path, {}) or {}
+    mgr = manager_sessions()
+    sessions = []
+    now = time.time()
+    cutoff = now - 15 * 60
+    for name in CFG["accounts"]:
+        base = os.path.join(acct_dir(name), "projects")
+        if not os.path.isdir(base):
+            continue
+        for proj_dir in glob.glob(os.path.join(base, "*")):
+            if not os.path.isdir(proj_dir):
+                continue
+            proj_name = os.path.basename(proj_dir)
+            # strip -Users-<user>- prefix and Desktop-
+            display = re.sub(r'^-Users-[^-]+-', '', proj_name)
+            display = re.sub(r'^Desktop-', '', display)
+            for f in glob.glob(os.path.join(proj_dir, "*.jsonl")):
+                # skip subagent transcripts
+                if os.sep + "subagents" + os.sep in f:
+                    continue
+                try:
+                    mtime = os.path.getmtime(f)
+                except OSError:
+                    continue
+                if mtime < cutoff:
+                    continue
+                sid = os.path.splitext(os.path.basename(f))[0]
+                title = _session_title(f, title_cache)
+                status = "working" if now - mtime < 90 else "idle"
+                sessions.append({
+                    "id": sid, "account": name, "project": display,
+                    "title": title, "status": status,
+                    "manager": sid in mgr,
+                    "updated": mtime,
+                })
+    write_json(title_cache_path, title_cache)
+    return sessions
+
+
 def cmd_state_json():
     m = manager_sessions()
     last = max(m.values()) if m else None
-    print(json.dumps({"now": time.time(), "tasks": board_load().get("tasks", []),
+    board_edit(lambda b: _ghost_cleanup(b.get("tasks", [])))
+    tasks = board_load().get("tasks", [])
+    sessions = []
+    try:
+        sessions = _build_sessions()
+    except Exception:
+        pass
+    print(json.dumps({"now": time.time(), "tasks": tasks,
                       "manager": {"active": bool(last and NOW - last < 15 * 60), "last_seen": last},
-                      "budget": budget_json()}))
+                      "budget": budget_json(), "sessions": sessions}))
 
 
 def cmd_hook(name):
@@ -679,12 +1024,16 @@ def cmd_hook(name):
     except ValueError:
         inp = {}
     kick_quota_refresh()
+    # T3 completion in user prompts (fast, never breaks output)
+    try:
+        _handle_t3_completion(inp.get("prompt") or "")
+    except Exception:
+        pass
     lines, warn = budget_lines(name)
     ctx = context_tokens(inp.get("transcript_path") or "")
     manager = is_manager(inp.get("session_id"), inp.get("transcript_path") or "")
     if manager:
-        lines.append("  MANAGER MODE: dispatch only. Log every task: `ctl.py board add <agent> \"<title>\" --t3 <taskId>` "
-                     "→ id; on finish `ctl.py board set <id> done|failed \"<1-line result>\"`. agy runs log themselves. "
+        lines.append("  MANAGER MODE: dispatch only. Tasks are logged to the board automatically by hooks (don't board add). "
                      "After a compaction run `ctl.py board list` to recover state. Office: http://localhost:2000"
                      + (f" · context {ktok(ctx)} (auto-compaction will handle it — do NOT ask for a new session)" if ctx else ""))
     elif ctx:
@@ -1135,12 +1484,16 @@ def main():
             cmd_agy_list(args)
         elif cmd == "board":
             cmd_board(args)
+        elif cmd == "track":
+            cmd_track()
         elif cmd == "state-json":
             cmd_state_json()
         else:
             sys.exit(__doc__)
     except Exception as e:  # never break the status line or the prompt
-        if cmd in ("statusline", "hook"):
+        if cmd == "track":
+            sys.exit(0)
+        elif cmd in ("statusline", "hook"):
             print(f"[ctl error: {e}]")
         else:
             raise
