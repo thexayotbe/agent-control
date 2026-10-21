@@ -216,7 +216,15 @@ def agy_ready(family):
     """Enabled accounts that can take a job in this model family right now."""
     st = agy_state()["accounts"]
     return [a for a in agy_accounts()
-            if not st.get(a["name"], {}).get("needs_login") and not agy_exhausted(st.get(a["name"], {}), family)]
+            if not st.get(a["name"], {}).get("needs_login") and not agy_exhausted(st.get(a["name"], {}), family)
+            and not agy_low(a["name"], family)]
+
+
+def agy_low(name, family):
+    """Nearly out per the last /quota: starting a long job there just dies mid-run and the work is lost."""
+    r = agy_remaining(name, family)
+    lim = CFG["agy"].get("min_remaining_pct", 25)
+    return bool(r) and (r[0] < lim / 2 or r[1] < lim)
 
 
 # ---------------------------------------------------------------- live quota
