@@ -10,6 +10,7 @@ export interface ChatLine {
   to?: string
   text: string
   ai: boolean
+  remote?: boolean // spoken from elsewhere (not at a desk right now): log only, no bubble
 }
 
 export interface ChatBubbleData { id: string; text: string; color: string }
@@ -18,7 +19,7 @@ export interface ChatSnapshot { log: ChatLine[]; muted: boolean; clean: boolean 
 
 interface BanterLine { id: string; speaker: string; to?: string; text: string }
 
-interface Speaker { key: string; agent: string; persona: Persona; task?: Task; actor?: Actor }
+interface Speaker { key: string; agent: string; persona: Persona; task?: Task; actor?: Actor; ghost?: boolean }
 
 export const PERSONA_COLOR: Record<Persona, string> = {
   opus: '#c4623a', sonnet: '#2f7d4f', haiku: '#b98a12', flash: '#2f7fc4', pro: '#8a3fa0', aopus: '#1f8f9a', manager: '#2f3b52',
@@ -64,6 +65,8 @@ export class ChatEngine {
   private queue: Array<() => boolean> = []
   private queueTimer = 0
   private lastSpoke = 0
+  private cool = new Map<string, number>()
+  private lastSpeakers: string[] = []
 
   private prev = new Map<string, Task['status']>()
   private seenFirst = false
@@ -211,6 +214,25 @@ export class ChatEngine {
     return out
   }
 
+  /** agents with no character on screen right now: they still answer, but from their phones (log only) */
+  private ghosts(): Speaker[] {
+    const here = new Set(this.onScreen().map((s) => s.persona))
+    return ['opus', 'sonnet', 'haiku', 'agy-flash', 'agy-pro', 'agy-opus']
+      .filter((agent) => !here.has(personaOf(agent)))
+      .map((agent) => ({ key: `ghost:${agent}`, agent, persona: personaOf(agent), ghost: true }))
+  }
+
+  private everyone(): Speaker[] { return [...this.onScreen(), ...this.ghosts()] }
+
+  /** prefer somebody who has not spoken in the last couple of lines */
+  private pickSpeaker(list: Speaker[]): Speaker {
+    const fresh = list.filter((s) => !this.lastSpeakers.includes(s.persona))
+    return choice(fresh.length ? fresh : list)
+  }
+
+  private due(key: string, ms: number) { return Date.now() - (this.cool.get(key) ?? 0) > ms }
+  private mark(key: string) { this.cool.set(key, Date.now()) }
+
   /** the character working on task t, or the manager if they already left */
   private speakerOfTask(t: Task): Speaker {
     const a = engine.getSnapshot().find((x) => x.id === t.id && !x.exiting)
@@ -219,7 +241,7 @@ export class ChatEngine {
 
   /** map an AI speaker id ("agy-sonnet") onto someone currently on screen */
   private resolve(agent: string): Speaker | null {
-    const all = this.onScreen()
+    const all = this.everyone()
     return all.find((s) => s.agent === agent) ?? all.find((s) => s.persona === personaOf(agent)) ?? null
   }
 
@@ -293,15 +315,18 @@ export class ChatEngine {
   private say(sp: Speaker, text: string, to: Speaker | string | null, ai: boolean) {
     if (this.snap.muted) return
     this.lastSpoke = Date.now()
+    this.lastSpeakers = [...this.lastSpeakers, sp.persona].slice(-2)
     const id = `c${++this.counter}-${Date.now().toString(36)}`
     const color = PERSONA_COLOR[sp.persona]
-    this.bubbles.set(sp.key, { id, text: clip(text, BUBBLE_CHARS), color })
-    clearTimeout(this.expiry.get(sp.key))
-    this.expiry.set(sp.key, window.setTimeout(() => {
-      this.expiry.delete(sp.key)
-      if (this.bubbles.delete(sp.key)) this.emit()
-    }, BUBBLE_MS + Math.min(2000, text.length * 20)))
-    const line: ChatLine = { id, ts: Date.now(), speaker: sp.agent, color, to: typeof to === 'string' ? to : to?.agent, text, ai }
+    if (!sp.ghost) {
+      this.bubbles.set(sp.key, { id, text: clip(text, BUBBLE_CHARS), color })
+      clearTimeout(this.expiry.get(sp.key))
+      this.expiry.set(sp.key, window.setTimeout(() => {
+        this.expiry.delete(sp.key)
+        if (this.bubbles.delete(sp.key)) this.emit()
+      }, BUBBLE_MS + Math.min(2000, text.length * 20)))
+    }
+    const line: ChatLine = { id, ts: Date.now(), speaker: sp.agent, color, to: typeof to === 'string' ? to : to?.agent, text, ai, remote: sp.ghost }
     this.set({ log: [...this.snap.log, line].slice(-LOG_MAX) })
   }
 
@@ -323,28 +348,32 @@ export class ChatEngine {
     if (this.snap.muted || this.queue.length) return
     if (!this.snap.clean && this.playAi()) return
     const people = this.onScreen()
+    const everyone = this.everyone()
     const others = people.filter((s) => s.key !== 'manager')
     const lounging = others.filter((s) => s.actor?.phase === 'lounging')
+    const working = others.filter((s) => s.actor?.phase === 'working')
     const running = this.tasks.filter((t) => t.status === 'running')
     const busy = this.tasks.some((t) => t.status === 'running' || t.status === 'queued')
     const pct = maxPct(this.budget)
 
+    // each topic has a cooldown, so a quiet office does not loop on the same moan
     const options: Array<() => boolean> = []
-    // somebody has been stuck on a task too long (and we haven't moaned about it in the last 5 min)
+    const topic = (key: string, ms: number, weight: number, run: () => boolean) => {
+      if (!this.due(key, ms)) return
+      for (let i = 0; i < weight; i++) options.push(() => { const ok = run(); if (ok) this.mark(key); return ok })
+    }
     const slow = running.find((t) => this.now - t.created > LONG_RUN_SECS && this.now - (this.complained.get(t.id) ?? 0) > 300)
     if (slow) {
-      options.push(() => {
+      topic('long', 60_000, 2, () => {
         this.complained.set(slow.id, this.now)
-        const sp = Math.random() < 0.5 ? this.speakerOfTask(slow) : this.manager()
-        return this.converse('long_running', sp, { task: slow })
+        return this.converse('long_running', Math.random() < 0.5 ? this.speakerOfTask(slow) : this.manager(), { task: slow })
       })
     }
-    if (lounging.length) for (let i = 0; i < 3; i++) options.push(() => this.converse('lounge_smalltalk', choice(lounging), {}))
-    if (!busy) for (let i = 0; i < 3; i++) options.push(() => this.converse('idle', choice(people), {}))
-    if (pct != null && pct >= HOT_PCT) options.push(() => this.converse('budget_high', Math.random() < 0.6 ? this.manager() : choice(people), { pct }))
-    const working = others.filter((s) => s.actor?.phase === 'working')
-    if (working.length) options.push(() => this.converse('lounge_smalltalk', choice(working), {}))
-    options.push(() => this.converse(busy ? 'lounge_smalltalk' : 'idle', choice(people), {}))
+    if (lounging.length) topic('lounge', 40_000, 3, () => this.converse('lounge_smalltalk', this.pickSpeaker(lounging), {}))
+    if (working.length) topic('work', 60_000, 1, () => this.converse('lounge_smalltalk', this.pickSpeaker(working), {}))
+    if (!busy) topic('idle', 90_000, 3, () => this.converse('idle', this.pickSpeaker(everyone), {}))
+    if (pct != null && pct >= HOT_PCT) topic('budget', 300_000, 1, () => this.converse('budget_high', this.pickSpeaker(everyone), { pct }))
+    topic('chat', 120_000, 1, () => this.converse(busy ? 'lounge_smalltalk' : 'idle', this.pickSpeaker(everyone), {}))
 
     for (let i = options.length; i > 0; i--) {
       const j = Math.floor(Math.random() * i)
@@ -355,7 +384,7 @@ export class ChatEngine {
 
   /** a line from `sp`, and often a comeback from somebody else a moment later */
   private converse(ev: ChatEvent, sp: Speaker, ctx: { task?: Task; pct?: number | null }): boolean {
-    const others = this.onScreen().filter((s) => s.key !== sp.key)
+    const others = this.everyone().filter((s) => s.key !== sp.key)
     const target = others.length && Math.random() < 0.6 ? choice(others) : null
     if (!this.speakEvent(ev, sp, target, ctx)) return false
     if (target) this.speakEvent('reply', target, sp, { other: sp })

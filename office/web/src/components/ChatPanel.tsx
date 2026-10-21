@@ -50,6 +50,7 @@ export function ChatPanel({ open }: { open: boolean }) {
               <div key={l.id} className="mb-[6px] text-[11px] leading-[1.3]">
                 <span className="mr-1 text-[9px] tabular-nums opacity-50">{hm(l.ts)}</span>
                 <b style={{ color: l.color }}>{l.speaker}</b>
+                {l.remote && <span title="not at a desk: replying from the phone" className="text-[9px]"> 📱</span>}
                 {l.to && <span className="opacity-60"> → {l.to}</span>}
                 <span>: {l.text}</span>
                 {l.ai && <span className="ml-1 text-[9px] opacity-40" title="AI-written">✨</span>}
