@@ -11,6 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 BASE = os.path.dirname(os.path.abspath(__file__))
 CTL = os.path.expanduser("~/.claude-control/bin/ctl.py")
 CACHE_TTL = 4.0
+BANTER = os.path.expanduser("~/.claude-control/state/banter.json")
 
 _lock = threading.Lock()
 _cache = {"ts": 0.0, "body": None}
@@ -61,6 +62,14 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/state":
             code, body = fetch_state()
             return self._send(code, body, "application/json")
+        if path == "/api/banter":
+            try:
+                with open(BANTER) as f:
+                    body = f.read().encode("utf-8")
+                json.loads(body)
+            except (OSError, ValueError):
+                body = b'{"lines":[]}'
+            return self._send(200, body, "application/json")
         if path == "/sample-state.json":
             return self._file(os.path.join(BASE, "sample-state.json"))
         rel = os.path.normpath(path.lstrip("/")) if path != "/" else "index.html"
@@ -82,6 +91,9 @@ def main():
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 2000
     srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     srv.daemon_threads = True
+    if os.environ.get("OFFICE_BANTER", "1") != "0":
+        import banter
+        threading.Thread(target=banter.loop, name="banter", daemon=True).start()
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
