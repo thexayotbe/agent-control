@@ -107,7 +107,7 @@ export function Defs() { return <FloorDefs /> }
 /** Room name signs live in the unscaled overlay. */
 export function RoomLabels({ scale }: { scale: number }) {
   const slot: Record<string, number> = {
-    library: 80, architect: 237, review: 397, scout: 66, lounge: 404, workshop: 126,
+    library: 80, architect: 237, review: 397, scout: 66, lounge: 404, workshop: 126, chat: 366,
   }
   return (
     <>

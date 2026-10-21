@@ -1,5 +1,5 @@
 import { motionValue, type MotionValue } from 'motion/react'
-import type { Task } from './types'
+import type { Session, Task } from './types'
 import {
   HAIRS, LOUNGE_STAND, NODES, OUTFITS, QUEUE_SIZE, ROOMS, SKINS, hashStr, nodePts, providerOf, roomFor, route, tagFor,
   type Pt, type RoomId, type Seat,
@@ -43,6 +43,16 @@ const FADE_MS = 650
 
 const isFinished = (t: Task) => t.status === 'done' || t.status === 'failed'
 
+/** Create a virtual Task from a Session so actors can use it. */
+function sessionTask(s: Session): Task {
+  return {
+    id: `s:${s.id}`, title: s.title, agent: 'session', account: s.account,
+    status: s.status === 'working' ? 'running' : 'done',
+    created: s.updated - 300, updated: s.updated, finished: null,
+    result: null, repo: s.project, t3_task: null,
+  }
+}
+
 export class OfficeEngine {
   private actors = new Map<string, Actor>()
   private seatOwner = new Map<string, string>()
@@ -55,6 +65,7 @@ export class OfficeEngine {
   private walkCounter = 0
   private firstSync = true
   private emitQueued = false
+  private sessionIds = new Set<string>()
   reduced = false
 
   // ------------------------------------------------------------ store api
@@ -111,9 +122,87 @@ export class OfficeEngine {
       this.spawn(t, delay, this.firstSync && done)
     }
     for (const a of this.actors.values()) {
+      if (a.id.startsWith('s:')) continue
       if (!this.tasks.has(a.id) && a.phase !== 'leaving') this.leave(a)
     }
     this.firstSync = false
+  }
+
+  /** Sync sessions as actors. Manager sessions are skipped (the Manager character handles them). */
+  syncSessions(sessions: Session[], _now: number) {
+    const alive = new Set<string>()
+    for (const s of sessions) {
+      if (s.manager) continue  // manager session uses the existing Manager character
+      const actorId = `s:${s.id}`
+      alive.add(actorId)
+      const a = this.get(actorId)
+      if (a) {
+        // status change: working → idle means move to lounge; idle → working means go to chat seat
+        const wasWorking = a.task.status === 'running'
+        const isWorking = s.status === 'working'
+        const vt = sessionTask(s)
+        this.patch(actorId, { task: vt })
+        if (wasWorking && !isWorking && a.phase === 'working') {
+          this.goLounge(a)
+        } else if (!wasWorking && isWorking && (a.phase === 'lounging' || a.phase === 'toLounge')) {
+          // re-assign to a chat seat
+          const cur = this.get(actorId) ?? a
+          this.patch(actorId, { room: 'chat' })
+          this.assign(this.get(actorId) ?? cur)
+        }
+        continue
+      }
+      if (this.skipped.has(actorId) || this.pending.has(actorId)) continue
+      this.spawnSession(s, this.firstSync ? 0 : 0)
+    }
+    // remove sessions that disappeared
+    for (const id of this.sessionIds) {
+      if (!alive.has(id)) {
+        const a = this.get(id)
+        if (a && a.phase !== 'leaving') this.leave(a)
+      }
+    }
+    this.sessionIds = alive
+  }
+
+  private spawnSession(s: Session, delay: number) {
+    const actorId = `s:${s.id}`
+    this.pending.add(actorId)
+    const go = () => {
+      this.pending.delete(actorId)
+      if (this.actors.has(actorId)) return
+      const h = hashStr(actorId)
+      const look: Look = {
+        skin: SKINS[h % SKINS.length],
+        hair: HAIRS[(h >>> 3) % HAIRS.length],
+        style: (h >>> 7) % 3,
+        glasses: (h >>> 10) % 5 === 0,
+        outfit: OUTFITS.session,
+      }
+      const isWorking = s.status === 'working'
+      const room: RoomId = isWorking ? 'chat' : 'lounge'
+      const vt = sessionTask(s)
+      // tasks map needs the virtual task for actor lookups
+      this.tasks.set(actorId, vt)
+
+      const start = NODES.out
+      const actor: Actor = {
+        id: actorId, task: vt, room, look, tag: `💬 ${s.project}`,
+        mv: { x: motionValue(start.x), y: motionValue(start.y) },
+        pose: 'stand', phase: 'toSeat', bubble: null, walk: null, seat: null,
+        at: 'out', dest: null, exiting: false, fadeIn: !this.reduced, queuedAt: 0,
+      }
+      this.actors.set(actorId, actor)
+      this.emit()
+      if (isWorking) {
+        // walk directly to a chat seat (skip the manager receiving animation)
+        this.assign(actor)
+      } else {
+        this.goLounge(actor)
+      }
+    }
+    if (delay > 0) this.timers.add(window.setTimeout(go, delay))
+    else go()
   }
 
   private onTask(a: Actor, t: Task) {
@@ -206,7 +295,9 @@ export class OfficeEngine {
         const seat = a.seat
         const sitting = !!seat && seat.id.startsWith('lounge:')
         this.patch(a.id, { phase: 'lounging', pose: sitting ? 'sit' : 'stand', bubble: 'coffee' })
-        this.after(a.id, LOUNGE_MS, 'lounging', (x) => this.leave(x))
+        if (!a.id.startsWith('s:')) {
+          this.after(a.id, LOUNGE_MS, 'lounging', (x) => this.leave(x))
+        }
         break
       }
       case 'toManagerFail':
@@ -216,7 +307,11 @@ export class OfficeEngine {
       case 'leaving':
         this.patch(a.id, { exiting: true, bubble: null })
         this.timers.add(window.setTimeout(() => {
-          if (this.tasks.has(a.id)) this.skipped.add(a.id)
+          if (a.id.startsWith('s:')) {
+            this.tasks.delete(a.id)
+          } else if (this.tasks.has(a.id)) {
+            this.skipped.add(a.id)
+          }
           this.actors.delete(a.id)
           this.emit()
         }, this.reduced ? 0 : FADE_MS))
@@ -239,12 +334,13 @@ export class OfficeEngine {
   private assign(a: Actor, instant = false) {
     const room = ROOMS[a.room]
     const seat = this.freeSeat(a.room)
+    const prefix = this.leaveSeat(a)
     const from = this.get(a.id) ?? a
     if (seat) {
       this.seatOwner.set(seat.id, a.id)
       const entry = room.entries[seat.entry]
-      const names = route(from.at ?? 'he', `${a.room}:out${seat.entry}`).slice(1)
-      const pts = [...nodePts(names), entry.inn, ...seat.via, { x: seat.x, y: seat.y }]
+      const toDoor = this.routeFrom(from, `${a.room}:out${seat.entry}`)
+      const pts = [...prefix, ...toDoor, entry.inn, ...seat.via, { x: seat.x, y: seat.y }]
       this.startWalk(from, pts, 'toSeat', null, { seat, queuedAt: 0 })
       if (instant) this.forceInstant(a.id)
       return
@@ -254,8 +350,9 @@ export class OfficeEngine {
       if (o.id !== a.id && o.room === a.room && (o.phase === 'toQueue' || o.phase === 'queued')) qi++
     }
     const q = `q:${a.room}:${Math.min(qi, QUEUE_SIZE - 1)}`
-    const names = route(from.at ?? 'he', q).slice(1)
-    this.startWalk(from, nodePts(names), 'toQueue', q, { queuedAt: from.queuedAt || Date.now() + qi })
+    const toQ = this.routeFrom(from, q)
+    const pts = [...prefix, ...toQ]
+    this.startWalk(from, pts, 'toQueue', q, { queuedAt: from.queuedAt || Date.now() + qi })
   }
 
   private forceInstant(id: string) {

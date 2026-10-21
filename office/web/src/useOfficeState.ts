@@ -44,6 +44,7 @@ export function useOfficeState() {
       setState(data)
       setNow(Date.now() / 1000 + offset.current)
       engine.sync(data.tasks, data.now)
+      engine.syncSessions(data.sessions ?? [], data.now)
       chat.update(data)
     }
     chat.start()

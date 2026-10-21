@@ -46,9 +46,20 @@ export interface Budget {
   agy?: AgyAccount[] | null
 }
 
+export interface Session {
+  id: string
+  account: string
+  project: string
+  title: string
+  status: 'working' | 'idle'
+  manager: boolean
+  updated: number
+}
+
 export interface OfficeState {
   now: number
   manager: { active: boolean; last_seen?: number | null }
   tasks: Task[]
   budget: Budget
+  sessions?: Session[]
 }

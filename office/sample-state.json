@@ -19,5 +19,9 @@
       {"name": "agy2", "gemini": {"week": 41, "five": 18}, "claude": {"week": 88, "five": 60}, "needs_login": false, "enabled": true},
       {"name": "agy3", "gemini": {"week": 3, "five": 3}, "claude": {"week": 56, "five": 0}, "needs_login": false, "enabled": true}
     ]
-  }
+  },
+  "sessions": [
+    {"id": "abc123", "account": "main", "project": "web-app", "title": "Fix checkout retry bug and add tests", "status": "working", "manager": false, "updated": 1792578800},
+    {"id": "def456", "account": "second", "project": "docs", "title": "Update the API reference docs", "status": "idle", "manager": false, "updated": 1792578600}
+  ]
 }

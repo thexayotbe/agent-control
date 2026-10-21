@@ -17,6 +17,7 @@ export const ROOM_STYLE: Record<RoomId, RoomStyle> = {
   review:    { floor: 'fl-tile',      wall: '#a0b48c', wallStripe: '#93a880', base: '#4f6040', rug: ['#6a4a8a', '#8d6ab0', '#e8dcf8'], wood: ['#d9a066', '#b97b44', '#8a5530'], accent: '#ff9ac0' },
   scout:     { floor: 'fl-woodPale',  wall: '#dcb892', wallStripe: '#d1ab84', base: '#8a5a33', rug: ['#4f9b57', '#74bb7a', '#e0f2d0'], wood: ['#e0b886', '#c0894f', '#8f5d33'], accent: '#e8f4ff' },
   lounge:    { floor: 'fl-woodWarm',  wall: '#b8695a', wallStripe: '#ab5d4f', base: '#5e2f26', rug: ['#c4623a', '#e8a070', '#f6e7c1'], wood: ['#d9a066', '#b97b44', '#8a5530'], accent: '#ffe08a' },
+  chat:      { floor: 'fl-woodWarm',  wall: '#c2724f', wallStripe: '#b36340', base: '#6e3822', rug: ['#d2693c', '#e68a5c', '#fce2c8'], wood: ['#dba96e', '#b97b44', '#8a5530'], accent: '#f4c9a0' },
 }
 
 /** One shared <defs>; patterns are in art-pixel units so they stay crisp under the stage scale. */

@@ -23,6 +23,28 @@ interface Props {
 export function Bubble({ kind, task, now, reduced }: Props) {
   let body: React.ReactNode
   let bg = '#fff8e4'
+  if (task.agent === 'session') {
+    const isWorking = task.status === 'running' || kind === 'task'
+    const icon = isWorking ? '💬' : '☕'
+    body = <span>{icon} {trunc(task.title || (isWorking ? 'working' : 'idle'), 32)}</span>
+    return (
+      <motion.div
+        initial={reduced ? false : { scale: 0.4, opacity: 0, y: 4 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={reduced ? { opacity: 0 } : { scale: 0.4, opacity: 0 }}
+        transition={{ type: 'spring', stiffness: 520, damping: 26 }}
+        style={{ transformOrigin: '50% 100%', background: bg }}
+        className="relative block w-max max-w-[140px] border-2 border-ink px-[5px] py-[3px] text-[10px] text-ink shadow-[2px_2px_0_#2b1a12]"
+      >
+        {body}
+        <span
+          aria-hidden
+          style={{ background: bg }}
+          className="absolute left-1/2 -bottom-[7px] -ml-[3px] block h-[5px] w-[6px] border-x-2 border-b-2 border-ink"
+        />
+      </motion.div>
+    )
+  }
   switch (kind) {
     case 'receive':
       body = <span className="text-[13px] leading-none">📋</span>

@@ -109,14 +109,19 @@ export function BottomBar({ state, budget }: { state: OfficeState | null; budget
   const counts: Record<RoomId, { run: number; q: number }> = {
     library: { run: 0, q: 0 }, workshop: { run: 0, q: 0 }, architect: { run: 0, q: 0 },
     review: { run: 0, q: 0 }, scout: { run: 0, q: 0 }, lounge: { run: 0, q: 0 },
+    chat: { run: 0, q: 0 },
   }
   for (const t of state?.tasks ?? []) {
     const r = roomFor(t.agent)
     if (t.status === 'running') counts[r].run++
     else if (t.status === 'queued') counts[r].q++
   }
+  for (const s of state?.sessions ?? []) {
+    if (s.manager) continue
+    if (s.status === 'working') counts.chat.run++
+  }
   const short: Record<RoomId, string> = {
-    library: 'Library', workshop: 'Workshop', architect: 'Architect', review: 'Review', scout: 'Scout', lounge: 'Lounge',
+    library: 'Library', workshop: 'Workshop', architect: 'Architect', review: 'Review', scout: 'Scout', lounge: 'Lounge', chat: 'Chat',
   }
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-t-4 border-ink bg-wood-m px-3 py-[6px] text-ink">

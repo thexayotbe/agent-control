@@ -33,21 +33,32 @@ export function TaskDetail({ task, now, onClose }: { task: Task; now: number; on
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b-2 border-ink bg-terra px-2 py-1 text-cream">
-          <span className="text-[11px] font-bold tracking-wider">{EMOJI[task.status]} {task.status.toUpperCase()}</span>
+          <span className="text-[11px] font-bold tracking-wider">{task.agent === 'session' ? (task.status === 'running' ? '💬 WORKING' : '☕ IDLE') : `${EMOJI[task.status]} ${task.status.toUpperCase()}`}</span>
           <button className="pixel-btn px-[6px] text-[11px] leading-[16px] text-ink" onClick={onClose} aria-label="Close">✕</button>
         </div>
-        <div className="p-3">
-          <div className="mb-2 text-[14px] font-bold leading-snug">{task.title}</div>
-          <Row k="agent">{tagFor(task.agent, task.account)} <span className="opacity-60">({task.agent}{task.account ? ` / ${task.account}` : ''})</span></Row>
-          <Row k="repo">{task.repo || '—'}</Row>
-          <Row k="started">{started.toLocaleString()}</Row>
-          <Row k="duration">{fmtDur(end - task.created)}{task.finished ? '' : ' (so far)'}</Row>
-          <Row k="id"><span className="opacity-70">{task.id}{task.t3_task ? ` · t3 ${task.t3_task}` : ''}</span></Row>
-          <div className="mt-2 text-[10px] uppercase opacity-60">result</div>
-          <div className="mt-1 max-h-[140px] overflow-auto whitespace-pre-wrap break-words border-2 border-ink bg-white/60 p-2 text-[11px]">
-            {task.result || (task.status === 'done' || task.status === 'failed' ? '(no result text)' : '… not finished yet')}
+        {task.agent === 'session' ? (
+          <div className="p-3">
+            <div className="mb-2 text-[14px] font-bold leading-snug">{task.title || '(untitled session)'}</div>
+            <Row k="project">{task.repo || '—'}</Row>
+            <Row k="account">{task.account || '—'}</Row>
+            <Row k="title">{task.title || '—'}</Row>
+            <Row k="last active">{fmtDur(Math.max(0, now - (task.updated || task.created)))} ago</Row>
+            <Row k="id"><span className="opacity-70">{task.id}</span></Row>
           </div>
-        </div>
+        ) : (
+          <div className="p-3">
+            <div className="mb-2 text-[14px] font-bold leading-snug">{task.title}</div>
+            <Row k="agent">{tagFor(task.agent, task.account)} <span className="opacity-60">({task.agent}{task.account ? ` / ${task.account}` : ''})</span></Row>
+            <Row k="repo">{task.repo || '—'}</Row>
+            <Row k="started">{started.toLocaleString()}</Row>
+            <Row k="duration">{fmtDur(end - task.created)}{task.finished ? '' : ' (so far)'}</Row>
+            <Row k="id"><span className="opacity-70">{task.id}{task.t3_task ? ` · t3 ${task.t3_task}` : ''}</span></Row>
+            <div className="mt-2 text-[10px] uppercase opacity-60">result</div>
+            <div className="mt-1 max-h-[140px] overflow-auto whitespace-pre-wrap break-words border-2 border-ink bg-white/60 p-2 text-[11px]">
+              {task.result || (task.status === 'done' || task.status === 'failed' ? '(no result text)' : '… not finished yet')}
+            </div>
+          </div>
+        )}
       </motion.div>
     </div>
   )

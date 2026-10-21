@@ -1,7 +1,7 @@
 // Geometry of the office. All coordinates are "art pixels" inside the building
 // (origin top-left). Characters are positioned by their FEET.
 
-export type RoomId = 'library' | 'workshop' | 'architect' | 'review' | 'scout' | 'lounge'
+export type RoomId = 'library' | 'workshop' | 'architect' | 'review' | 'scout' | 'lounge' | 'chat'
 
 export interface Pt { x: number; y: number }
 export interface Rect { x: number; y: number; w: number; h: number }
@@ -111,8 +111,22 @@ export const LOUNGE_STAND: Pt[] = [
   { x: 440, y: 176 }, { x: 456, y: 180 }, { x: 430, y: 214 }, { x: 462, y: 222 }, { x: 392, y: 208 },
 ]
 
-export const ROOMS: Record<RoomId, RoomDef> = { library, workshop, architect, review, scout, lounge }
-export const ROOM_LIST: RoomDef[] = [library, workshop, architect, review, scout, lounge]
+const chat: RoomDef = {
+  id: 'chat', label: 'Chat Desks', icon: '💬',
+  rect: { x: 256, y: 248, w: 220, h: 108 },
+  entries: [{ inn: { x: 360, y: 264 }, out: { x: 360, y: 242 }, door: { x: 360, y: 248, orient: 'h' } }],
+  seats: [
+    { id: 'chat:0', x: 294, y: 294, entry: 0, kind: 'desk', via: [{ x: 294, y: 270 }] },
+    { id: 'chat:1', x: 340, y: 294, entry: 0, kind: 'desk', via: [{ x: 340, y: 270 }] },
+    { id: 'chat:2', x: 386, y: 294, entry: 0, kind: 'desk', via: [{ x: 386, y: 270 }] },
+    { id: 'chat:3', x: 432, y: 294, entry: 0, kind: 'desk', via: [{ x: 432, y: 270 }] },
+    { id: 'chat:4', x: 314, y: 340, entry: 0, kind: 'desk', via: [{ x: 314, y: 320 }, { x: 314, y: 270 }] },
+    { id: 'chat:5', x: 410, y: 340, entry: 0, kind: 'desk', via: [{ x: 410, y: 320 }, { x: 410, y: 270 }] },
+  ],
+}
+
+export const ROOMS: Record<RoomId, RoomDef> = { library, workshop, architect, review, scout, lounge, chat }
+export const ROOM_LIST: RoomDef[] = [library, workshop, architect, review, scout, lounge, chat]
 
 export const MANAGER = {
   desk: { x: 196, y: 150, w: 88, h: 26 },
@@ -129,8 +143,9 @@ export const AGENT_ROOM: Record<string, RoomId> = {
 }
 export const roomFor = (agent: string): RoomId => AGENT_ROOM[agent] ?? 'scout'
 
-export type Provider = 'claude' | 'agy' | 'other' | 'manager'
+export type Provider = 'claude' | 'agy' | 'other' | 'manager' | 'session'
 export const providerOf = (agent: string): Provider => {
+  if (agent === 'session') return 'session'
   if (agent.startsWith('agy')) return 'agy'
   if (agent === 'sonnet' || agent === 'opus' || agent === 'haiku') return 'claude'
   return 'other'
@@ -142,6 +157,7 @@ export const OUTFITS: Record<Provider, Outfit> = {
   agy:      { main: '#4a86d8', shade: '#2f5fa8', accent: '#bcd7f7', pants: '#33415c', shoes: '#1d2536' },
   other:    { main: '#8a8f98', shade: '#646a73', accent: '#d5d9df', pants: '#444a52', shoes: '#22252a' },
   manager:  { main: '#2f3b52', shade: '#1e2738', accent: '#e8c15a', pants: '#252d3d', shoes: '#12161f' },
+  session:  { main: '#d2693c', shade: '#a64a27', accent: '#f4c9a0', pants: '#5a3b2e', shoes: '#2e1d16' },
 }
 
 export const SKINS = ['#f6d3b3', '#e8b48a', '#c98f65', '#a56b44', '#6f4529']
@@ -178,6 +194,7 @@ const EDGES: [string, string][] = [
   ['mid', 'workshop:out1'], ['workshop:out1', 'workshop:out0'], ['workshop:out1', 'hw'],
   ['hw', 'scout:out0'], ['hw', 'c2'], ['he', 'c4'], ['he', 'lounge:out0'],
   ['library:out0', 'c2'], ['c2', 'architect:out0'], ['architect:out0', 'c4'], ['c4', 'review:out0'],
+  ['lobby', 'chat:out0'],
 ]
 for (const r of ROOM_LIST) r.entries.forEach((e, i) => { NODES[`${r.id}:out${i}`] = e.out })
 
@@ -185,6 +202,7 @@ for (const r of ROOM_LIST) r.entries.forEach((e, i) => { NODES[`${r.id}:out${i}`
 export const QUEUE_DIR: Record<RoomId, Pt> = {
   library: { x: -18, y: 0 }, architect: { x: -18, y: 0 }, review: { x: 18, y: 0 },
   workshop: { x: -20, y: 0 }, scout: { x: 14, y: 0 }, lounge: { x: -14, y: 0 },
+  chat: { x: -18, y: 0 },
 }
 export const QUEUE_SIZE = 5
 for (const r of ROOM_LIST) {

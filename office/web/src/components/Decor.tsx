@@ -27,6 +27,7 @@ const EXTRAS: Record<string, Extra[]> = {
   architect: ['blueprint', 'plant', 'blueprint', 'mug'],
   review: ['lens', 'papers', 'lens', 'papers'],
   scout: ['mug', 'papers', 'mug', 'plant'],
+  chat: ['mug', 'papers', 'mug', 'plant', 'papers', 'none'],
 }
 
 export function Decor({ seatOn, loungeBusy }: { seatOn: Record<string, boolean>; loungeBusy: boolean }) {
