@@ -1,0 +1,19 @@
+# private runtime data — never commit
+state/
+ledger/
+handoffs/
+plans/
+board.json
+board.json.lock
+config.json
+*.bak
+*.bak-*
+*.tmp
+__pycache__/
+menubar/
+.DS_Store
+
+# office web build
+office/web/node_modules/
+office/web/dist/
+office/web/*.tsbuildinfo

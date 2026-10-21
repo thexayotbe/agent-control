@@ -1,0 +1,62 @@
+{
+  "accounts": {
+    "main": {
+      "dir": "~/.claude",
+      "plan": "Max 5x",
+      "role": "primary",
+      "keychain": "Claude Code-credentials"
+    },
+    "second": {
+      "dir": "~/.claude-second",
+      "plan": "Max 5x",
+      "role": "reserve",
+      "keychain": "Claude Code-credentials-<hash>  (see README: security find-generic-password)"
+    }
+  },
+  "thresholds": {
+    "warn_pct": 70,
+    "ask_pct": 85,
+    "stop_pct": 95
+  },
+  "agy": {
+    "bin": "~/.local/bin/agy",
+    "models": {
+      "flash": "gemini-3.8-flash-medium",
+      "flash-low": "gemini-3.8-flash-low",
+      "flash-high": "gemini-3.8-flash-high",
+      "pro": "gemini-3.8-flash-high",
+      "opus": "claude-opus-4-6-thinking",
+      "sonnet": "claude-sonnet-4-6"
+    },
+    "default_timeout": "600s",
+    "accounts": [
+      {
+        "name": "agy",
+        "home": "~",
+        "enabled": true
+      },
+      {
+        "name": "agy2",
+        "home": "~/.agy-accounts/agy2",
+        "enabled": true
+      },
+      {
+        "name": "agy3",
+        "home": "~/.agy-accounts/agy3",
+        "enabled": true
+      },
+      {
+        "name": "agy4",
+        "home": "~/.agy-accounts/agy4",
+        "enabled": true
+      }
+    ],
+    "cooldown_minutes": 300,
+    "full_access": true
+  },
+  "active_session_minutes": 10,
+  "style": "short",
+  "default_model": "sonnet",
+  "new_session_tokens": 150000,
+  "quota_fresh_seconds": 300
+}
