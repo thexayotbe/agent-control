@@ -1,0 +1,66 @@
+@import "tailwindcss";
+
+@theme {
+  --font-pixel: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --color-ink: #2b1a12;
+  --color-wood-d: #7a4a2b;
+  --color-wood-m: #a8683a;
+  --color-wood-l: #d9a066;
+  --color-cream: #f6e7c1;
+  --color-cream-d: #e5cf9c;
+  --color-terra: #c4623a;
+}
+
+html, body, #root { height: 100%; margin: 0; }
+body {
+  background: #1f2a1a;
+  font-family: var(--font-pixel);
+  color: var(--color-ink);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+svg { display: block; shape-rendering: crispEdges; }
+
+.pixel-box {
+  background: var(--color-cream);
+  border: 2px solid var(--color-ink);
+  box-shadow: 3px 3px 0 var(--color-ink);
+}
+.pixel-btn {
+  background: var(--color-cream);
+  border: 2px solid var(--color-ink);
+  box-shadow: 2px 2px 0 var(--color-ink);
+  cursor: pointer;
+}
+.pixel-btn:active { transform: translate(2px, 2px); box-shadow: none; }
+
+/* monitor flicker: swap which "text lines" are lit */
+@keyframes scr-a { 0%, 100% { opacity: 1 } 50% { opacity: .25 } }
+@keyframes scr-b { 0%, 100% { opacity: .3 } 50% { opacity: 1 } }
+@keyframes scr-c { 0%, 60% { opacity: 1 } 61%, 100% { opacity: .15 } }
+.scr-a { animation: scr-a 0.9s steps(1) infinite; }
+.scr-b { animation: scr-b 1.3s steps(1) infinite; }
+.scr-c { animation: scr-c 0.7s steps(1) infinite; }
+@keyframes glow-pulse { 0%, 100% { opacity: .55 } 50% { opacity: .85 } }
+.glow-pulse { animation: glow-pulse 2.4s ease-in-out infinite; }
+@keyframes lamp-flick { 0%, 100% { opacity: .9 } 45% { opacity: .75 } 50% { opacity: .95 } }
+.lamp-flick { animation: lamp-flick 3.1s steps(1) infinite; }
+@keyframes steam { 0% { transform: translateY(0); opacity: 0 } 30% { opacity: .9 } 100% { transform: translateY(-5px); opacity: 0 } }
+.steam { animation: steam 1.8s steps(5) infinite; }
+@keyframes tail { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(1px) } }
+.cat-tail { animation: tail 1.6s steps(1) infinite; }
+@keyframes blink { 0%, 92%, 100% { opacity: 1 } 94%, 98% { opacity: 0 } }
+.blink { animation: blink 5s steps(1) infinite; }
+@keyframes breathe { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(0.5px) } }
+.breathe { animation: breathe 2.2s steps(1) infinite; }
+@keyframes zfloat { 0% { transform: translate(0, 0); opacity: 0 } 20% { opacity: 1 } 100% { transform: translate(5px, -9px); opacity: 0 } }
+.zfloat { animation: zfloat 2.6s steps(6) infinite; }
+@keyframes sway { 0%, 100% { transform: translateX(0) } 50% { transform: translateX(0.5px) } }
+.sway { animation: sway 3s steps(1) infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .scr-a, .scr-b, .scr-c, .glow-pulse, .lamp-flick, .steam, .cat-tail, .blink, .breathe, .zfloat, .sway {
+    animation: none !important;
+  }
+}
