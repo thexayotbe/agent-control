@@ -1,0 +1,173 @@
+#!/usr/bin/env python3
+"""ai — one place to control Claude (main/second) and agy (Gemini).
+
+  ai                    dashboard
+  ai main [model]       start Claude on MAIN   (model: opus|sonnet|haiku, default from config)
+  ai second [model]     start Claude on SECOND (reserve, asks first)
+  ai gem [tier] [acct]  start agy interactive  (tier: flash|pro|opus|sonnet…; acct: agy|agy2|…)
+  ai agy list|check     agy accounts: usage per account / probe login + quota
+  ai agy add <name>     create a new agy account (e.g. agy5), then: ai agy login agy5
+  ai agy login <name>   open agy under that account to sign in (exit with /quit)
+  ai agy on|off <name>  enable / disable an account in rotation
+  ai ask <tier> "..."   one-shot agy question in the current folder
+  ai report [days]      where tokens went
+  ai board [--all]      task board (running / done / failed)
+  ai office             open the Agent Office at http://localhost:2000
+  ai style short|normal reply length for all agents
+  ai model <name>       default model for ai main/second
+  ai warn <a> <b> <c>   alert thresholds % (default 70 85 95)
+  ai rules | ai config  edit routing rules / config
+"""
+import json
+import os
+import subprocess
+import sys
+
+ROOT = os.path.expanduser("~/.claude-control")
+CTL = os.path.join(ROOT, "bin", "ctl.py")
+CFG_PATH = os.path.join(ROOT, "config.json")
+
+
+def cfg():
+    return json.load(open(CFG_PATH))
+
+
+def save(c):
+    json.dump(c, open(CFG_PATH, "w"), indent=2)
+
+
+def ctl(*args):
+    subprocess.run([sys.executable, CTL, *args])
+
+
+def claude(account, model):
+    c = cfg()
+    env = dict(os.environ)
+    d = os.path.expanduser(c["accounts"][account]["dir"])
+    if d == os.path.expanduser("~/.claude"):
+        env.pop("CLAUDE_CONFIG_DIR", None)
+    else:
+        env["CLAUDE_CONFIG_DIR"] = d
+    model = model or c.get("default_model", "sonnet")
+    os.execvpe("claude", ["claude", "--model", model], env)
+
+
+def agy_find(c, name):
+    for acct in c["agy"]["accounts"]:
+        if acct["name"] == name:
+            return acct
+    sys.exit(f"unknown agy account {name!r}; have: {', '.join(x['name'] for x in c['agy']['accounts'])}")
+
+
+def agy_home(c, name):
+    home = os.path.expanduser(agy_find(c, name).get("home", "~"))
+    return home
+
+
+# dotfiles shared into each extra account's HOME so git/ssh/npm/node keep working inside agy
+SHARED = [".gitconfig", ".ssh", ".npmrc", ".config", ".nvm", ".local", ".zshrc", ".zprofile", ".gitignore_global", ".dotnet"]
+
+
+def agy_cmd(a):
+    c = cfg()
+    sub = a[0] if a else "list"
+    if sub == "list":
+        ctl("agy-list")
+    elif sub == "check":
+        ctl("agy-check", *a[1:])
+    elif sub == "add":
+        if len(a) < 2:
+            sys.exit("ai agy add <name>   e.g. ai agy add agy5")
+        name = a[1]
+        if any(x["name"] == name for x in c["agy"]["accounts"]):
+            sys.exit(f"{name} already exists")
+        home = os.path.expanduser(f"~/.agy-accounts/{name}")
+        os.makedirs(home, exist_ok=True)
+        for f in SHARED:
+            src, dst = os.path.expanduser(f"~/{f}"), os.path.join(home, f)
+            if os.path.exists(src) and not os.path.lexists(dst):
+                os.symlink(src, dst)
+        c["agy"]["accounts"].append({"name": name, "home": f"~/.agy-accounts/{name}", "enabled": True})
+        save(c)
+        print(f"added {name}. Next: ai agy login {name}   (then ai agy check)")
+        print(f"optional alias:  alias {name}='HOME=$HOME/.agy-accounts/{name} agy'   → ~/.zshrc")
+    elif sub == "login":
+        if len(a) < 2:
+            sys.exit("ai agy login <name>")
+        env = dict(os.environ, HOME=agy_home(c, a[1]))
+        print(f"Opening agy as {a[1]} — complete the Google sign-in, then type /quit.")
+        os.execvpe(os.path.expanduser(c["agy"]["bin"]), ["agy"], env)
+    elif sub in ("on", "off"):
+        if len(a) < 2:
+            sys.exit(f"ai agy {sub} <name>")
+        agy_find(c, a[1])["enabled"] = sub == "on"
+        save(c)
+        print(f"{a[1]} → {sub}")
+    else:
+        sys.exit("ai agy list|check|add <name>|login <name>|on <name>|off <name>")
+
+
+def main():
+    a = sys.argv[1:]
+    cmd = a[0] if a else ""
+    if cmd in ("", "status"):
+        c = cfg()
+        ctl("status")
+        print(f"style {c.get('style', 'short')} · default model {c.get('default_model', 'sonnet')} · "
+              f"warn/ask/stop {c['thresholds']['warn_pct']}/{c['thresholds']['ask_pct']}/{c['thresholds']['stop_pct']}%"
+              "  ·  ai help")
+    elif cmd == "main":
+        claude("main", a[1] if len(a) > 1 else None)
+    elif cmd == "second":
+        if input("SECOND is the reserve account. Start anyway? [y/N] ").lower() != "y":
+            return
+        claude("second", a[1] if len(a) > 1 else None)
+    elif cmd == "gem":
+        c = cfg()
+        tier = a[1] if len(a) > 1 else "flash"
+        env = dict(os.environ)
+        if len(a) > 2:
+            env["HOME"] = agy_home(c, a[2])
+        os.execvpe(os.path.expanduser(c["agy"]["bin"]),
+                   ["agy", "--model", c["agy"]["models"].get(tier, tier)], env)
+    elif cmd == "agy":
+        agy_cmd(a[1:])
+    elif cmd == "ask":
+        if len(a) < 3:
+            sys.exit('ai ask <tier> "question"')
+        ctl("agy", a[1], *a[2:])
+    elif cmd == "report":
+        ctl("report", *a[1:2])
+    elif cmd == "board":
+        ctl("board", *(a[1:] or ["list"]))
+    elif cmd == "office":
+        subprocess.run(["open", "http://localhost:2000"])
+    elif cmd == "style":
+        c = cfg()
+        if len(a) < 2 or a[1] not in ("short", "normal"):
+            sys.exit(f"style is {c.get('style', 'short')} — use: ai style short|normal")
+        c["style"] = a[1]
+        save(c)
+        print(f"style → {a[1]} (applies from the next message in every session)")
+    elif cmd == "model":
+        c = cfg()
+        if len(a) < 2:
+            sys.exit(f"default model is {c.get('default_model', 'sonnet')} — use: ai model opus|sonnet|haiku")
+        c["default_model"] = a[1]
+        save(c)
+        print(f"default model → {a[1]} (for ai main / ai second)")
+    elif cmd == "warn":
+        c = cfg()
+        w, k, s = (int(x) for x in a[1:4])
+        c["thresholds"] = {"warn_pct": w, "ask_pct": k, "stop_pct": s}
+        save(c)
+        print(f"thresholds → {w}/{k}/{s}%")
+    elif cmd in ("rules", "config"):
+        path = os.path.join(ROOT, "ROUTING.md" if cmd == "rules" else "config.json")
+        os.execvp(os.environ.get("EDITOR", "nano"), [os.environ.get("EDITOR", "nano"), path])
+    else:
+        print(__doc__.strip())
+
+
+if __name__ == "__main__":
+    main()
