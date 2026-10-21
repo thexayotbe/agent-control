@@ -65,9 +65,9 @@ read-only work: `approval-required`. Several independent tasks → several async
 Report format per finished task: `✅ <title> — <1-line result> (<model>)` or `❌ … — <why>`.
 
 **Board + office.** Start a Manager with `/manager` in any T3 thread (the hook then stops the "new session" nag
-there; auto-compaction handles size). Log every delegated task: `ctl.py board add <agent> "<title>" --t3 <taskId>`
-→ id, then `ctl.py board set <id> done|failed "<result>"`. `ctl.py agy …` runs log themselves. After compaction
-run `ctl.py board list` first. The user watches it live at http://localhost:2000 (`ai office`, `ai board`).
+there; auto-compaction handles size). Tasks are logged **automatically** from every chat (hooks on sub-agents,
+T3 `delegate_task` and their completions; `ctl.py agy …` runs log themselves) — don't `board add` by hand.
+After compaction run `ctl.py board list` first. The user watches it live at http://localhost:2000 (`ai office`, `ai board`).
 
 ## Classify the task first (one line, before work)
 

@@ -43,10 +43,15 @@ Add to `~/.claude/settings.json` (use `second` instead of `main` in the second a
   "hooks": {
     "UserPromptSubmit": [
       { "matcher": "", "hooks": [ { "type": "command", "command": "python3 ~/.claude-control/bin/ctl.py hook main", "timeout": 10 } ] }
-    ]
+    ],
+    "PreToolUse":   [ { "matcher": "Agent|Task", "hooks": [ { "type": "command", "command": "python3 ~/.claude-control/bin/ctl.py track", "timeout": 5 } ] } ],
+    "PostToolUse":  [ { "matcher": "Agent|Task|mcp__t3.code__delegate_task", "hooks": [ { "type": "command", "command": "python3 ~/.claude-control/bin/ctl.py track", "timeout": 5 } ] } ],
+    "SubagentStop": [ { "matcher": "", "hooks": [ { "type": "command", "command": "python3 ~/.claude-control/bin/ctl.py track", "timeout": 5 } ] } ]
   }
 }
 ```
+
+The `track` hooks put every sub-agent and T3 `delegate_task` from **any** chat on the board and mark it done when it finishes.
 
 Load the routing rules and helpers in every session:
 
@@ -87,12 +92,11 @@ After changing the UI, run `pnpm build` again. The server picks up the new build
 Type `/manager` in any Claude Code chat. From then on:
 
 1. The chat only dispatches work. Reading and drafts go to agy, code goes to Claude Sonnet, and large or cross-repo work goes to Claude Opus.
-2. Every task goes on the board:
+2. The board fills itself: the `track` hooks log every sub-agent and delegated task, and `ctl.py agy …` runs log themselves. Manual entries are still possible:
    ```bash
    ctl.py board add sonnet "Fix login redirect" --repo web-app   # → prints a task id
    ctl.py board set <id> done "tests pass"
    ```
-   `ctl.py agy …` runs add and finish their own board entries.
 3. Ask `status?` at any time, or watch the office.
 
 Board agents and their rooms:
@@ -104,6 +108,8 @@ Board agents and their rooms:
 | `sonnet`, `agy-sonnet` | Workshop (code) |
 | `opus`, `agy-opus` | Architect's office |
 | `haiku` | Scout corner |
+
+Every open Claude Code chat also shows up as a 💬 character: at the Chat desks while it's working, in the Lounge while idle.
 
 ## Layout
 
