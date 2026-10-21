@@ -885,8 +885,9 @@ def cmd_agy(args):
     full = CFG["agy"].get("full_access", True)
     write, web, sandbox, cwd, timeout, forced = False, False, not full, os.getcwd(), CFG["agy"]["default_timeout"], None
     title = None
+    no_board = False
     if not args:
-        sys.exit("usage: ctl.py agy <tier> [--write] [--web] [--sandbox|--no-sandbox] [--account NAME] [--cwd DIR] [--timeout 600s] <prompt>")
+        sys.exit("usage: ctl.py agy <tier> [--write] [--web] [--sandbox|--no-sandbox] [--account NAME] [--cwd DIR] [--timeout 600s] [--no-board] <prompt>")
     tier = args.pop(0)
     model = CFG["agy"]["models"].get(tier, tier)
     rest = []
@@ -908,13 +909,17 @@ def cmd_agy(args):
             timeout = args.pop(0)
         elif a == "--title":
             title = args.pop(0)
+        elif a == "--no-board":
+            no_board = True
         else:
             rest.append(a)
     prompt = " ".join(rest)
     if prompt == "-":
         prompt = sys.stdin.read()
     global BOARD_ID
-    if os.environ.get("CTL_BOARD_ID"):
+    if no_board:
+        BOARD_ID = None
+    elif os.environ.get("CTL_BOARD_ID"):
         BOARD_ID = os.environ["CTL_BOARD_ID"]
         board_update(BOARD_ID, status="running", agent=f"agy-{tier}")
     else:
