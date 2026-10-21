@@ -1,6 +1,6 @@
 import type { Budget, OfficeState, Task } from '../types'
 import { engine, type Actor } from '../engine'
-import { CLEAN, LINES, personaOf, type ChatEvent, type Persona } from './lines'
+import { CLEAN, LINES, isPureLang, personaOf, type ChatEvent, type Persona } from './lines'
 
 export interface ChatLine {
   id: string
@@ -30,6 +30,8 @@ const BUBBLE_CHARS = 60
 const LONG_RUN_SECS = 600
 const HOT_PCT = 70
 const SEEN_MAX = 300
+const MIN_GAP_MS = 15_000 // at most one message per 15s, whoever speaks
+const QUEUE_MAX = 4
 const LS = { clean: 'office.chat.clean', muted: 'office.chat.muted', seen: 'office.chat.seen' }
 
 const rand = (a: number, b: number) => a + Math.random() * (b - a)
@@ -59,6 +61,9 @@ export class ChatEngine {
   private pollTimer = 0
   private started = false
   private counter = 0
+  private queue: Array<() => boolean> = []
+  private queueTimer = 0
+  private lastSpoke = 0
 
   private prev = new Map<string, Task['status']>()
   private seenFirst = false
@@ -108,6 +113,9 @@ export class ChatEngine {
     this.started = false
     clearInterval(this.pollTimer)
     clearTimeout(this.tickTimer)
+    clearTimeout(this.queueTimer)
+    this.queueTimer = 0
+    this.queue = []
     this.timers.forEach((t) => clearTimeout(t))
     this.timers.clear()
     this.clearBubbles()
@@ -123,7 +131,7 @@ export class ChatEngine {
       const r = await fetch('/api/banter', { cache: 'no-store' })
       if (!r.ok) return
       const d = await r.json() as { lines?: BanterLine[] }
-      if (Array.isArray(d.lines)) this.ai = d.lines.filter((l) => l && l.id && l.speaker && l.text)
+      if (Array.isArray(d.lines)) this.ai = d.lines.filter((l) => l && l.id && l.speaker && l.text && isPureLang(l.text))
     } catch { /* server without banter: templates only */ }
   }
 
@@ -243,17 +251,48 @@ export class ChatEngine {
     return tpl.replace(/\{(\w+)\}/g, (m, k: string) => vals[k] ?? m)
   }
 
+  private hasPool(ev: ChatEvent, p: Persona): boolean {
+    const set = this.snap.clean ? CLEAN : LINES
+    return (set[ev][p]?.length ?? 0) + (set[ev].any?.length ?? 0) > 0
+  }
+
+  /** queue a templated line; the text is picked when it is actually said */
   private speakEvent(ev: ChatEvent, sp: Speaker, to: Speaker | null, ctx: { task?: Task; other?: Speaker | null; pct?: number | null } = {}): boolean {
-    if (this.snap.muted) return false
-    const tpl = this.pick(ev, sp.persona)
-    if (!tpl) return false
-    this.say(sp, this.fill(tpl, sp, { ...ctx, other: ctx.other ?? to }), to, false)
+    if (this.snap.muted || !this.hasPool(ev, sp.persona)) return false
+    this.enqueue(() => {
+      const tpl = this.pick(ev, sp.persona)
+      if (!tpl) return false
+      this.say(sp, this.fill(tpl, sp, { ...ctx, other: ctx.other ?? to }), to, false)
+      return true
+    })
     return true
+  }
+
+  // ------------------------------------------------------------ pacing
+  /** every message goes through here: one at a time, MIN_GAP_MS apart, and a stale backlog is dropped */
+  private enqueue(fn: () => boolean) {
+    this.queue.push(fn)
+    while (this.queue.length > QUEUE_MAX) this.queue.shift()
+    this.pump()
+  }
+
+  private pump() {
+    if (this.queueTimer || !this.queue.length || !this.started) return
+    const wait = Math.max(0, this.lastSpoke + MIN_GAP_MS - Date.now())
+    this.queueTimer = window.setTimeout(() => {
+      this.queueTimer = 0
+      while (this.queue.length) {
+        const fn = this.queue.shift()!
+        if (!this.snap.muted && fn()) break
+      }
+      this.pump()
+    }, wait)
   }
 
   // ------------------------------------------------------------ output
   private say(sp: Speaker, text: string, to: Speaker | string | null, ai: boolean) {
     if (this.snap.muted) return
+    this.lastSpoke = Date.now()
     const id = `c${++this.counter}-${Date.now().toString(36)}`
     const color = PERSONA_COLOR[sp.persona]
     this.bubbles.set(sp.key, { id, text: clip(text, BUBBLE_CHARS), color })
@@ -277,11 +316,11 @@ export class ChatEngine {
     this.tickTimer = window.setTimeout(() => {
       if (!this.started) return
       try { this.tick() } finally { this.scheduleTick() }
-    }, rand(8000, 20000))
+    }, rand(15000, 30000))
   }
 
   private tick() {
-    if (this.snap.muted) return
+    if (this.snap.muted || this.queue.length) return
     if (!this.snap.clean && this.playAi()) return
     const people = this.onScreen()
     const others = people.filter((s) => s.key !== 'manager')
@@ -319,7 +358,7 @@ export class ChatEngine {
     const others = this.onScreen().filter((s) => s.key !== sp.key)
     const target = others.length && Math.random() < 0.6 ? choice(others) : null
     if (!this.speakEvent(ev, sp, target, ctx)) return false
-    if (target) this.later(rand(1000, 3000), () => this.speakEvent('reply', target, sp, { other: sp }))
+    if (target) this.speakEvent('reply', target, sp, { other: sp })
     return true
   }
 
@@ -338,17 +377,18 @@ export class ChatEngine {
   }
 
   private playAiAt(idx: number, depth: number) {
-    const line = this.ai[idx]
-    if (!line || this.snap.muted || this.snap.clean) return
-    const sp = this.resolve(line.speaker)
-    this.markSeen(line.id)
-    if (!sp) return
-    const to = line.to ? this.resolve(line.to) : null
-    this.say(sp, line.text, to && to.key !== sp.key ? to : to ? null : line.to || null, true)
-    const next = this.ai[idx + 1]
-    if (depth < 3 && next && !this.seen.has(next.id) && this.resolve(next.speaker)) {
-      this.later(rand(1500, 3000), () => this.playAiAt(idx + 1, depth + 1))
-    }
+    this.enqueue(() => {
+      const line = this.ai[idx]
+      if (!line || this.snap.muted || this.snap.clean) return false
+      const sp = this.resolve(line.speaker)
+      this.markSeen(line.id)
+      if (!sp) return false
+      const to = line.to ? this.resolve(line.to) : null
+      this.say(sp, line.text, to && to.key !== sp.key ? to : to ? null : line.to || null, true)
+      const next = this.ai[idx + 1]
+      if (depth < 3 && next && !this.seen.has(next.id) && this.resolve(next.speaker)) this.playAiAt(idx + 1, depth + 1)
+      return true
+    })
   }
 }
 

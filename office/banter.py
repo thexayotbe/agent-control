@@ -29,18 +29,18 @@ PERSONAS = """- opus: arrogant senior architect, condescending
 - agy-opus: wannabe architect, jealous of opus
 - manager: stressed boss obsessed with budget percentages"""
 
-EXAMPLES = """бля, опять этот deploy упал, fuck my life
-bro, кто это говно писал
-Haiku опять обосрался lol
+EXAMPLES = """бля, опять этот билд упал, жизнь — говно
+кто это говно писал вообще
+haiku опять обосрался, ахаха
 я просто читаю доки, отвали
 пиздец, MAIN уже 80%, вы вообще работаете?
-ну да, конечно, это же я виноват, shit
-nitpick: тут пробела нет. и логика говно
-я бы сделал это за 5 минут, but ok, sit there
-хули так долго, 12 минут уже
-чел, я стажёр, я просто нажал не туда"""
+well, of course it is my fault, fuck
+I would do it in five minutes, but fine, sit there
+the formatting is garbage and so is the logic
+хули так долго, двенадцать минут уже
+dude, I am the intern, I just pressed the wrong thing"""
 
-PROMPT = """You write fake office chit-chat for a local pixel-art toy UI. Characters are AI agents who talk like real, lazy, rude coworkers. Informal, swearing welcome (fuck, shit, бля, нахуй, пиздец), Runglish: Russian + English slang mixed, Cyrillic plus English words, lowercase, typos ok, short broken lines (max 80 chars each). Funny, never hateful: no slurs about race, religion, gender or orientation, no real people.
+PROMPT = """You write fake office chit-chat for a local pixel-art toy UI. Characters are AI agents who talk like real, lazy, rude coworkers. Informal, swearing welcome (fuck, shit, бля, нахуй, пиздец), lowercase, typos ok, short broken lines (max 80 chars each). LANGUAGE RULE: every single line is either fully Russian or fully English. Never mix both languages inside one line (agent names like opus/sonnet and numbers are fine). About 65% of lines Russian, 35% English; a dialogue may switch language between lines. Funny, never hateful: no slurs about race, religion, gender or orientation, no real people.
 
 Speakers (use exactly these ids):
 {personas}
@@ -53,6 +53,18 @@ Current office state:
 
 Write 15-20 lines forming 3-5 short dialogues (2-5 lines each) about the ACTUAL tasks and budget above. Each line: speaker, to (who they talk to, one of the speaker ids, or "" if muttering), text.
 Reply with STRICT JSON ONLY, no prose, no code fences: [{{"speaker":"sonnet","to":"opus","text":"..."}}]"""
+
+CYR = re.compile("[\u0400-\u04FF]")
+NAMES = {"opus", "sonnet", "haiku", "agy", "flash", "pro", "manager", "main", "second", "claude", "gemini"}
+
+
+def pure(text):
+    """True if a line is one language: Cyrillic lines may only carry agent names as Latin words."""
+    if not CYR.search(text):
+        return True
+    return all(len(w) < 3 or w.lower() in NAMES or w.lower().startswith("agy-")
+               for w in re.findall(r"[A-Za-z][A-Za-z-]*", text))
+
 
 SPEAKERS = {"opus", "sonnet", "agy-sonnet", "haiku", "agy-flash", "agy-pro", "agy-opus", "manager"}
 
@@ -115,7 +127,7 @@ def parse(text):
             continue
         sp, tx = str(d.get("speaker", "")).strip(), str(d.get("text", "")).strip()
         to = str(d.get("to", "") or "").strip()
-        if sp not in SPEAKERS or not tx:
+        if sp not in SPEAKERS or not tx or not pure(tx):
             continue
         out.append({"speaker": sp, "to": to if to in SPEAKERS and to != sp else "", "text": tx[:140]})
     if not out:
