@@ -1061,6 +1061,12 @@ def cmd_hook(name):
     if CFG.get("style", "short") == "short":
         out.append("STYLE short: answer in ≤6 lines or a small table. Result first, no preamble, "
                    "no restating the task, no step-by-step narration. Details only if asked.")
+    if CFG.get("tone") == "roast":
+        out.append("TONE roast: talk to the user in Russian, like a mate in a chat — street slang, мат is fine "
+                   "(блять, нахуй, пиздец, ёб твою…), roast them or their code when it's earned. Facts only: "
+                   "no politeness, no 'отличный вопрос', no apologies, no filler. Roast the work, never who they are. "
+                   "Only chat replies change: code, comments, commits, PR text, files, UI copy and prompts "
+                   "to sub-agents/agy keep their normal language and neutral tone.")
     print("\n".join(out))
 
 

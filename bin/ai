@@ -14,6 +14,7 @@
   ai board [--all]      task board (running / done / failed)
   ai office             open the Agent Office at http://localhost:2000
   ai style short|normal reply length for all agents
+  ai tone roast|normal  roast = rude Russian slang + мат in replies
   ai model <name>       default model for ai main/second
   ai warn <a> <b> <c>   alert thresholds % (default 70 85 95)
   ai rules | ai config  edit routing rules / config
@@ -149,6 +150,13 @@ def main():
         c["style"] = a[1]
         save(c)
         print(f"style → {a[1]} (applies from the next message in every session)")
+    elif cmd == "tone":
+        c = cfg()
+        if len(a) < 2 or a[1] not in ("roast", "normal"):
+            sys.exit(f"tone is {c.get('tone', 'normal')} — use: ai tone roast|normal")
+        c["tone"] = a[1]
+        save(c)
+        print(f"tone → {a[1]} (applies from the next message in every session)")
     elif cmd == "model":
         c = cfg()
         if len(a) < 2:

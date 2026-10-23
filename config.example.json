@@ -58,5 +58,6 @@
   "style": "short",
   "default_model": "sonnet",
   "new_session_tokens": 150000,
-  "quota_fresh_seconds": 300
+  "quota_fresh_seconds": 300,
+  "tone": "normal"
 }

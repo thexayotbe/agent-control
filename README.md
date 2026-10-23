@@ -86,6 +86,7 @@ After changing the UI, run `pnpm build` again. The server picks up the new build
 | `ai office` | Open the Agent Office |
 | `ai report [days]` | Where the tokens went |
 | `ai style short\|normal`, `ai warn 70 85 95` | Reply length, alert thresholds |
+| `ai tone roast\|normal` | Reply tone: `roast` = blunt Russian slang with swearing (chat only, never in code or commits) |
 
 ### Manager mode
 
