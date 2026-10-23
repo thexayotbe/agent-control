@@ -1,6 +1,6 @@
 import type { Budget, OfficeState, Task } from '../types'
 import { engine, type Actor } from '../engine'
-import { CLEAN, LINES, isPureLang, personaOf, type ChatEvent, type Persona } from './lines'
+import { CLEAN, LINES, isPureLang, personaOf, spice, type ChatEvent, type Persona } from './lines'
 
 export interface ChatLine {
   id: string
@@ -314,6 +314,7 @@ export class ChatEngine {
   // ------------------------------------------------------------ output
   private say(sp: Speaker, text: string, to: Speaker | string | null, ai: boolean) {
     if (this.snap.muted) return
+    if (!this.snap.clean) text = spice(text)
     this.lastSpoke = Date.now()
     this.lastSpeakers = [...this.lastSpeakers, sp.persona].slice(-2)
     const id = `c${++this.counter}-${Date.now().toString(36)}`

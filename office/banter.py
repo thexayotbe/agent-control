@@ -34,13 +34,10 @@ EXAMPLES = """бля, опять этот билд упал, жизнь — го
 haiku опять обосрался, ахаха
 я просто читаю доки, отвали
 пиздец, MAIN уже 80%, вы вообще работаете?
-well, of course it is my fault, fuck
-I would do it in five minutes, but fine, sit there
-the formatting is garbage and so is the logic
 хули так долго, двенадцать минут уже
-dude, I am the intern, I just pressed the wrong thing"""
+короче, я стажёр, сука, нажал не ту хуйню, ёпта"""
 
-PROMPT = """You write fake office chit-chat for a local pixel-art toy UI. Characters are AI agents who talk like real, lazy, rude coworkers. Informal, swearing welcome (fuck, shit, бля, нахуй, пиздец), lowercase, typos ok, short broken lines (max 80 chars each). LANGUAGE RULE: every single line is either fully Russian or fully English. Never mix both languages inside one line (agent names like opus/sonnet and numbers are fine). About 65% of lines Russian, 35% English; a dialogue may switch language between lines. Funny, never hateful: no slurs about race, religion, gender or orientation, no real people.
+PROMPT = """You write fake office chit-chat for a local pixel-art toy UI. Characters are AI agents who talk like real, lazy, rude coworkers. Informal, lowercase, typos ok, short broken lines (max 80 chars each). LANGUAGE RULE: RUSSIAN ONLY, every line fully in Russian (agent names like opus/sonnet and numbers are fine, no other Latin words). Heavy мат in almost every line (бля, блядь, нахуй, пиздец, сука, ебать, хуйня, заебало, охуеть, ёб твою мать), and spoken glue words between phrases (короче, типа, ну, слышь, походу, в натуре, ёпта), like real people texting. Funny, never hateful: no slurs about race, religion, gender or orientation, no real people.
 
 Speakers (use exactly these ids):
 {personas}
@@ -59,9 +56,9 @@ NAMES = {"opus", "sonnet", "haiku", "agy", "flash", "pro", "manager", "main", "s
 
 
 def pure(text):
-    """True if a line is one language: Cyrillic lines may only carry agent names as Latin words."""
+    """True if a line is Russian: Cyrillic, with only agent names as Latin words."""
     if not CYR.search(text):
-        return True
+        return False
     return all(len(w) < 3 or w.lower() in NAMES or w.lower().startswith("agy-")
                for w in re.findall(r"[A-Za-z][A-Za-z-]*", text))
 
